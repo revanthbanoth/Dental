@@ -8,14 +8,31 @@ dotenv.config();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  // Add your Render frontend URL below once you deploy it:
+  // 'https://dental-frontend-xxxx.onrender.com',
+];
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow all localhost origins (any port) and requests with no origin (Postman, etc.)
-    if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (Postman, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Allow localhost in development
+    if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+      return callback(null, true);
     }
+    // Allow all Render.com hosted frontends
+    if (origin.endsWith('.onrender.com')) {
+      return callback(null, true);
+    }
+    // Allow any other explicitly listed origins
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
