@@ -23,6 +23,14 @@ function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 1500);
+    // Silently ping the backend to wake it up (Render free tier sleeps after inactivity)
+    const backendUrl = import.meta.env.VITE_API_URL
+      || (window.location.hostname === 'localhost'
+        ? 'http://localhost:5000/api'
+        : 'https://dental-backend-m8eh.onrender.com/api');
+    fetch(backendUrl.replace('/api', ''))
+      .then(() => console.log('✅ Backend is awake'))
+      .catch(() => console.log('⏳ Backend waking up...'));
     return () => clearTimeout(timer);
   }, []);
 

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Auto-detect environment: use env var, or smart fallback
+// Auto-detect environment: use env var, or smart hostname-based fallback
 const BASE_URL = import.meta.env.VITE_API_URL
     || (window.location.hostname === 'localhost'
         ? 'http://localhost:5000/api'
@@ -9,7 +9,7 @@ const BASE_URL = import.meta.env.VITE_API_URL
 const API = axios.create({
     baseURL: BASE_URL,
     headers: { 'Content-Type': 'application/json' },
-    timeout: 30000, // 30s timeout — Render free tier can be slow to wake up
+    timeout: 60000, // 60s — Render free tier needs up to 60s to wake from sleep
 });
 
 // Attach token for admin calls
@@ -18,6 +18,21 @@ API.interceptors.request.use((config) => {
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
 });
+
+// Auto-retry once on timeout/network error (to handle Render cold start)
+API.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const config = error.config;
+        if (!config._retried && (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK')) {
+            config._retried = true;
+            console.log('⏳ Server cold start detected, retrying in 10s...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            return API(config);
+        }
+        return Promise.reject(error);
+    }
+);
 
 export const bookAppointment = (data) => API.post('/appointments', data);
 export const getAppointments = () => API.get('/appointments');
