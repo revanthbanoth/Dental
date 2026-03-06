@@ -7,39 +7,57 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  // Add your Render frontend URL below once you deploy it:
-  // 'https://dental-frontend-xxxx.onrender.com',
-];
-
+// ─── CORS ────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, curl, etc.)
+    // Allow no-origin requests (Postman, curl, mobile apps)
     if (!origin) return callback(null, true);
-    // Allow localhost in development
+    // Allow any localhost port (development)
     if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
       return callback(null, true);
     }
-    // Allow all Render.com hosted frontends
+    // Allow ALL Render.com hosted domains (frontend)
     if (origin.endsWith('.onrender.com')) {
       return callback(null, true);
     }
-    // Allow any other explicitly listed origins
-    if (allowedOrigins.includes(origin)) {
+    // Allow any custom domain if set via env
+    const allowedDomain = process.env.FRONTEND_URL;
+    if (allowedDomain && origin === allowedDomain) {
       return callback(null, true);
     }
-    callback(new Error('Not allowed by CORS'));
+    callback(new Error('Not allowed by CORS: ' + origin));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Routes
+// ─── BODY PARSERS ────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ─── HEALTH & KEEP-ALIVE ROUTES ──────────────────────────────────────────────
+// Root health check
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SmileCare Dental Clinic API is running! 🦷',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'production',
+  });
+});
+
+// /api/health - used by frontend ping
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server running', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
+});
+
+// /api/ping - keep-alive route for Render free tier
+app.get('/api/ping', (req, res) => {
+  res.json({ pong: true, time: Date.now() });
+});
+
+// ─── API ROUTES ───────────────────────────────────────────────────────────────
 const appointmentRoutes = require('./routes/appointments');
 const contactRoutes = require('./routes/contact');
 const blogRoutes = require('./routes/blog');
@@ -50,37 +68,71 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Health check
-app.get('/', (req, res) => {
-  res.json({ message: 'Lotus Dental Clinic API is running! 🦷', status: 'OK' });
+// ─── 404 HANDLER ─────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
 });
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://brevanth50_db_user:revanth05@cluster0.eod5r4t.mongodb.net/dental-clinic?appName=Cluster0';
+// ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', err.message);
+  res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
+});
 
-mongoose.connect(MONGO_URI)
+// ─── MONGODB + SERVER START ──────────────────────────────────────────────────
+const MONGO_URI = process.env.MONGO_URI;
+const PORT = process.env.PORT || 5000;
+
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI is not defined in environment variables!');
+  process.exit(1);
+}
+
+mongoose
+  .connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+  })
   .then(() => {
     console.log('✅ MongoDB connected successfully');
-    console.log(`📦 Database: ${MONGO_URI}`);
+
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`);
+    });
+
+    // ─── SELF KEEP-ALIVE PING (prevents Render free tier from sleeping) ──────
+    if (process.env.NODE_ENV !== 'development') {
+      const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+      const http = SELF_URL.startsWith('https') ? require('https') : require('http');
+      setInterval(() => {
+        http.get(`${SELF_URL}/api/ping`, (res) => {
+          console.log(`🏓 Keep-alive ping → ${res.statusCode}`);
+        }).on('error', (err) => {
+          console.log(`⚠️  Keep-alive error: ${err.message}`);
+        });
+      }, 10 * 60 * 1000); // every 10 minutes
+    }
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use!`);
+        process.exit(1);
+      } else {
+        throw err;
+      }
+    });
   })
   .catch((err) => {
-    console.error('❌ MongoDB connection error:', err.message);
+    console.error('❌ MongoDB connection failed:', err.message);
     process.exit(1);
   });
 
-const PORT = process.env.PORT || 5000;
-
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
-
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\n❌ Port ${PORT} is already in use!`);
-    console.error(`👉 Fix: Open a new terminal and run:`);
-    console.error(`   npx kill-port ${PORT}`);
-    console.error(`   Then run "npm run dev" again.\n`);
-    process.exit(1);
-  } else {
-    throw err;
-  }
+// ─── GRACEFUL SHUTDOWN ────────────────────────────────────────────────────────
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  mongoose.connection.close(() => {
+    console.log('📦 MongoDB connection closed.');
+    process.exit(0);
+  });
 });

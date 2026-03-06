@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 const appointmentSchema = new mongoose.Schema({
     name: {
@@ -28,30 +27,13 @@ const appointmentSchema = new mongoose.Schema({
     },
     doctor: {
         type: String,
-        required: [true, 'Please select a doctor'],
-        enum: [
-            'Dr. Priya Sharma',
-            'Dr. Rajesh Kumar',
-            'Dr. Anita Rao',
-            'Dr. Mohammed Khalid',
-            'Any Available Doctor',
-        ],
+        trim: true,
         default: 'Any Available Doctor',
     },
     service: {
         type: String,
         required: [true, 'Service is required'],
-        enum: [
-            'Dental Checkup',
-            'Root Canal Treatment',
-            'Dental Implants',
-            'Smile Designing',
-            'Wisdom Tooth Extraction',
-            'Laser Dentistry',
-            'Teeth Whitening',
-            'Braces / Aligners',
-            'Other',
-        ],
+        trim: true,
     },
     message: {
         type: String,
