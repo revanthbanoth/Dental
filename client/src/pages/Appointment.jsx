@@ -88,8 +88,8 @@ export default function Appointment() {
         } catch (error) {
             console.error('Appointment booking error:', error);
             const msg = error.response?.data?.message
-                || (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK'
-                    ? '❌ Cannot connect to server. Please make sure the backend is running on port 5000.'
+                || (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK' || error.code === 'ETIMEDOUT'
+                    ? '⏳ Server is starting up, please wait a moment and try again.'
                     : 'Failed to book appointment. Please try again.');
             toast.error(msg, { duration: 5000 });
         } finally {

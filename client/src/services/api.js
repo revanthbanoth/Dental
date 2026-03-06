@@ -1,12 +1,15 @@
 import axios from 'axios';
 
-// Use explicit backend URL to avoid Vite proxy issues
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Auto-detect environment: use env var, or smart fallback
+const BASE_URL = import.meta.env.VITE_API_URL
+    || (window.location.hostname === 'localhost'
+        ? 'http://localhost:5000/api'
+        : 'https://dental-backend-m8eh.onrender.com/api');
 
 const API = axios.create({
     baseURL: BASE_URL,
     headers: { 'Content-Type': 'application/json' },
-    timeout: 10000, // 10 second timeout
+    timeout: 30000, // 30s timeout — Render free tier can be slow to wake up
 });
 
 // Attach token for admin calls
